@@ -74,6 +74,8 @@ const listMax = 1000
 // noStorageClass defines the value to be used if storage class is not supported by the S3 endpoint
 const noStorageClass = "NONE"
 
+const folderContentType = "application/x-directory"
+
 // s3StorageClasses lists all compatible (instant retrieval) S3 storage classes
 var s3StorageClasses = []string{
 	noStorageClass,
@@ -721,31 +723,25 @@ func (d *driver) Writer(ctx context.Context, path string, appendParam bool) (sto
 // Stat retrieves the FileInfo for the given path, including the current size
 // in bytes and the creation time.
 func (d *driver) Stat(ctx context.Context, path string) (storagedriver.FileInfo, error) {
-	resp, err := d.S3.ListObjectsV2(&s3.ListObjectsV2Input{
-		Bucket:  aws.String(d.Bucket),
-		Prefix:  aws.String(d.s3Path(path)),
-		MaxKeys: aws.Int64(1),
-	})
+	input := &s3.HeadObjectInput{
+		Bucket: aws.String(d.Bucket),
+		Key:    aws.String(d.s3Path(path)),
+	}
+	resp, err := d.S3.HeadObject(input)
+
 	if err != nil {
 		return nil, err
 	}
 
-	fi := storagedriver.FileInfoFields{
-		Path: path,
+	if resp == nil {
+		return nil, errors.New("resp is nil")
 	}
 
-	if len(resp.Contents) == 1 {
-		if *resp.Contents[0].Key != d.s3Path(path) {
-			fi.IsDir = true
-		} else {
-			fi.IsDir = false
-			fi.Size = *resp.Contents[0].Size
-			fi.ModTime = *resp.Contents[0].LastModified
-		}
-	} else if len(resp.CommonPrefixes) == 1 {
-		fi.IsDir = true
-	} else {
-		return nil, storagedriver.PathNotFoundError{Path: path}
+	fi := storagedriver.FileInfoFields{
+		Path:    path,
+		ModTime: *resp.LastModified,
+		IsDir:   *resp.ContentType == folderContentType,
+		Size:    *resp.ContentLength,
 	}
 
 	return storagedriver.FileInfoInternal{FileInfoFields: fi}, nil
