@@ -19,3 +19,6 @@
 
 # Go workspace file
 go.work
+
+cmd/registry/config.yml
+.DS_Store
